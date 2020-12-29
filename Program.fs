@@ -3,15 +3,12 @@
 open System
 open NUnit.Framework
 open FsUnit
+open LispTypes
 open Parser
-
-[<Test>]
-let ``test framework`` () =
-    1 |> should equal 1
+open Eval
 
 [<EntryPoint>]
 let main argv =
-    let input = if argv.Length = 0 then "" else argv.[0]
-    let result = readExpr input
-    printfn "%s\n" result
+    argv |> Array.tryHead |> Option.defaultValue "" |>
+    readExpr |> eval |> (fun v -> v.ToString()) |> printfn "%s\n"
     0 // return an integer exit code

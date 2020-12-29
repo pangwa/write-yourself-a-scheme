@@ -55,9 +55,8 @@ parseExprRef
 
 let readExpr input =
     match run parseExpr input with
-    | Failure (_, err, _) -> sprintf "No match: %s" (err.ToString())
-    | Success _ -> "Found value"
-
+    | Failure (_, err, _) -> sprintf "No match: %s" (err.ToString()) |> LispString
+    | Success (v, _, _) -> v
 
 let checkResult v r =
     match r with
