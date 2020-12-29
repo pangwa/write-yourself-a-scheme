@@ -15,6 +15,31 @@ let rec unpackNum =
     | LispList [ n ] -> unpackNum n
     | v -> TypeMismatch("number", v) |> throwError
 
+let boolBinop unpacker op (args: List<LispVal>) =
+    if args.Length <> 2 then
+        NumArgs(2, args) |> throwError
+    else
+        monad {
+            let! left = args.[0] |> unpacker
+            let! right = args.[1] |> unpacker
+            return op left right |> LispBool
+        }
+
+let unpackStr =
+    function
+    | LispString s -> Result.Ok s
+    | LispNumber v -> sprintf "%d" v |> Result.Ok
+    | LispBool v -> v.ToString() |> Result.Ok
+    | notString -> TypeMismatch("string", notString) |> throwError
+
+let unpackBool =
+    function
+    | LispBool v -> Result.Ok v
+    | notBool -> TypeMismatch("boolean", notBool) |> throwError
+
+let numBoolBinop = boolBinop unpackNum
+let strBoolBinop = boolBinop unpackStr
+let boolBoolBinop = boolBinop unpackBool
 
 let numbericBinOp op args =
     match args with
@@ -35,7 +60,20 @@ let primitives: Map<string, List<LispVal> -> ThrowsError<LispVal>> =
         Add("/", numbericBinOp (safeMath (/))).
         Add("mod", numbericBinOp (safeMath (%))).
         Add("quotient", numbericBinOp (safeMath (/))).
-        Add("remainder", numbericBinOp (fun a b -> (divRem a b) |> snd |> Result.Ok))
+        Add("remainder", numbericBinOp (fun a b -> (divRem a b) |> snd |> Result.Ok)).
+        Add("=", numBoolBinop (=)).
+        Add("<", numBoolBinop (<)).
+        Add(">", numBoolBinop (>)).
+        Add("/=", numBoolBinop (<>)).
+        Add(">=", numBoolBinop (>=)).
+        Add("<=", numBoolBinop (<=)).
+        Add("&&", boolBoolBinop (&&)).
+        Add("||", boolBoolBinop (||)).
+        Add("string=?", strBoolBinop (=)).
+        Add("string<?", strBoolBinop (<)).
+        Add("string>?", strBoolBinop (>)).
+        Add("string<=?", strBoolBinop (<=)).
+        Add("string>=?", strBoolBinop (>=))
 
 let rec eval = 
   function
@@ -43,6 +81,10 @@ let rec eval =
   | LispNumber _ as v -> Result.Ok v
   | LispBool _ as v -> Result.Ok v
   | LispList [ LispAtom "quote"; v ] -> Result.Ok v
+  | LispList [LispAtom "if"; pred; conseq; alt] ->
+              eval pred |> Result.bind (fun v -> match v with
+                                       | LispBool false -> eval alt
+                                       | _ -> eval conseq)
   | LispList (LispAtom func:: args) -> args |> mapM eval |> Result.bind (apply func)
 
 and mapM fn =
