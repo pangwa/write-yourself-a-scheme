@@ -82,6 +82,57 @@ let rec eqv =
     | [ l; r ] -> l = r |> LispBool |> Result.Ok
     | badArgList -> NumArgs(2, badArgList) |> throwError
 
+let unpackEquals arg1 arg2 (unpacker: LispVal -> ThrowsError<obj>) =
+    monad {
+        let! unpacked1 = unpacker arg1
+        let! unpacked2 = unpacker arg2
+        return (unpacked1 = unpacked2)
+    }
+    </ catch /> (fun _ -> result false)
+
+let anyUnpacker unpacker v =
+    unpacker v |> Result.map (fun x -> x :> obj)
+
+let rec equalFn =
+    function
+    | [ LispList a; LispList b ] ->
+        let ret =
+            a.Length = b.Length
+            && List.zip a b
+               |> List.forall (fun (x, y) -> equal2 x y)
+
+        ret |> LispBool |> Result.Ok
+    | [ LispDottedList (a1, b1); LispDottedList (a2, b2) ] ->
+        let ret =
+            a1.Length = a2.Length
+            && List.zip a1 a2
+               |> List.forall (fun (x, y) -> equal2 x y)
+            && equal2 b1 b2
+
+        ret |> LispBool |> Result.Ok
+    | [ a; b ] ->
+        let unpackers =
+            [ anyUnpacker unpackNum
+              anyUnpacker unpackStr
+              anyUnpacker unpackBool ]
+
+        let anyUnpackerEqual =
+            unpackers
+            |> List.exists
+                (fun up ->
+                    let ret = unpackEquals a b up
+                    ret = Result.Ok(true))
+
+        let ret =
+            anyUnpackerEqual
+            || (eqv [ a; b ] |> (=) (Result.Ok(LispBool true)))
+
+        ret |> LispBool |> Result.Ok
+    | badArgList -> NumArgs(2, badArgList) |> throwError
+
+and equal2 x y =
+    equalFn [ x; y ] |> (=) (Result.Ok(LispBool true))
+
 let primitives: Map<string, List<LispVal> -> ThrowsError<LispVal>> =
     Map
         .empty
@@ -105,6 +156,12 @@ let primitives: Map<string, List<LispVal> -> ThrowsError<LispVal>> =
         .Add("string>?", strBoolBinop (>))
         .Add("string<=?", strBoolBinop (<=))
         .Add("string>=?", strBoolBinop (>=))
+        .Add("car", car)
+        .Add("cdr", cdr)
+        .Add("cons", cons)
+        .Add("eqv?", eqv)
+        .Add("eq?", eqv)
+        .Add("equal?", equalFn)
 
 let rec eval =
     function
