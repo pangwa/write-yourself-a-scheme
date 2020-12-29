@@ -43,57 +43,93 @@ let boolBoolBinop = boolBinop unpackBool
 
 let numbericBinOp op args =
     match args with
-    | [] -> NumArgs (2, []) |> throwError
-    | [_] as v -> NumArgs (2, v) |> throwError
+    | [] -> NumArgs(2, []) |> throwError
+    | [ _ ] as v -> NumArgs(2, v) |> throwError
     | v ->
-         let argsParsed: ThrowsError<List<int64>> = args |> List.map unpackNum |> List.sequence
-         Result.bind (fun (head:: tail) -> List.foldM op head tail)
-                      argsParsed  |> Result.map LispNumber
+        let argsParsed: ThrowsError<List<int64>> =
+            args |> List.map unpackNum |> List.sequence
+
+        Result.bind (fun (head :: tail) -> List.foldM op head tail) argsParsed
+        |> Result.map LispNumber
 
 let safeMath op a b = op a b |> Result.Ok
 
-let primitives: Map<string, List<LispVal> -> ThrowsError<LispVal>> =
-    Map.empty.
-        Add("+", numbericBinOp (safeMath (+))).
-        Add("-", numbericBinOp (safeMath (-))).
-        Add("*", numbericBinOp (safeMath (*))).
-        Add("/", numbericBinOp (safeMath (/))).
-        Add("mod", numbericBinOp (safeMath (%))).
-        Add("quotient", numbericBinOp (safeMath (/))).
-        Add("remainder", numbericBinOp (fun a b -> (divRem a b) |> snd |> Result.Ok)).
-        Add("=", numBoolBinop (=)).
-        Add("<", numBoolBinop (<)).
-        Add(">", numBoolBinop (>)).
-        Add("/=", numBoolBinop (<>)).
-        Add(">=", numBoolBinop (>=)).
-        Add("<=", numBoolBinop (<=)).
-        Add("&&", boolBoolBinop (&&)).
-        Add("||", boolBoolBinop (||)).
-        Add("string=?", strBoolBinop (=)).
-        Add("string<?", strBoolBinop (<)).
-        Add("string>?", strBoolBinop (>)).
-        Add("string<=?", strBoolBinop (<=)).
-        Add("string>=?", strBoolBinop (>=))
+let car =
+    function
+    | [ LispList (x :: _) ] -> Result.Ok x
+    | [ LispDottedList (x :: _, _) ] -> Result.Ok x
+    | [ badArg ] -> TypeMismatch("pair", badArg) |> throwError
+    | badArgList -> NumArgs(1, badArgList) |> throwError
 
-let rec eval = 
-  function
-  | LispString _ as v -> Result.Ok v
-  | LispNumber _ as v -> Result.Ok v
-  | LispBool _ as v -> Result.Ok v
-  | LispList [ LispAtom "quote"; v ] -> Result.Ok v
-  | LispList [LispAtom "if"; pred; conseq; alt] ->
-              eval pred |> Result.bind (fun v -> match v with
-                                       | LispBool false -> eval alt
-                                       | _ -> eval conseq)
-  | LispList (LispAtom func:: args) -> args |> mapM eval |> Result.bind (apply func)
+let cdr v =
+    match v with
+    | [ LispList (_ :: xs) ] -> Result.Ok(LispList xs)
+    | [ LispDottedList ([ _ ], x) ] -> Result.Ok x
+    | [ LispDottedList (_ :: xs, x) ] -> Result.Ok(LispDottedList(xs, x))
+    | [ badArg ] -> TypeMismatch("pair", badArg) |> throwError
+    | badArgList -> NumArgs(1, badArgList) |> throwError
+
+let cons =
+    function
+    | [ x1; LispList [] ] -> Result.Ok(LispList [ x1 ])
+    | [ x; LispList xs ] -> x :: xs |> LispList |> Result.Ok
+    | [ x; LispDottedList (xs, xlast) ] -> LispDottedList(x :: xs, xlast) |> Result.Ok
+    | [ x1; x2 ] -> LispDottedList([ x1 ], x2) |> Result.Ok
+    | badArgList -> NumArgs(2, badArgList) |> throwError
+
+let rec eqv =
+    function
+    | [ l; r ] -> l = r |> LispBool |> Result.Ok
+    | badArgList -> NumArgs(2, badArgList) |> throwError
+
+let primitives: Map<string, List<LispVal> -> ThrowsError<LispVal>> =
+    Map
+        .empty
+        .Add("+", numbericBinOp (safeMath (+)))
+        .Add("-", numbericBinOp (safeMath (-)))
+        .Add("*", numbericBinOp (safeMath (*)))
+        .Add("/", numbericBinOp (safeMath (/)))
+        .Add("mod", numbericBinOp (safeMath (%)))
+        .Add("quotient", numbericBinOp (safeMath (/)))
+        .Add("remainder", numbericBinOp (fun a b -> (divRem a b) |> snd |> Result.Ok))
+        .Add("=", numBoolBinop (=))
+        .Add("<", numBoolBinop (<))
+        .Add(">", numBoolBinop (>))
+        .Add("/=", numBoolBinop (<>))
+        .Add(">=", numBoolBinop (>=))
+        .Add("<=", numBoolBinop (<=))
+        .Add("&&", boolBoolBinop (&&))
+        .Add("||", boolBoolBinop (||))
+        .Add("string=?", strBoolBinop (=))
+        .Add("string<?", strBoolBinop (<))
+        .Add("string>?", strBoolBinop (>))
+        .Add("string<=?", strBoolBinop (<=))
+        .Add("string>=?", strBoolBinop (>=))
+
+let rec eval =
+    function
+    | LispString _ as v -> Result.Ok v
+    | LispNumber _ as v -> Result.Ok v
+    | LispBool _ as v -> Result.Ok v
+    | LispList [ LispAtom "quote"; v ] -> Result.Ok v
+    | LispList [ LispAtom "if"; pred; conseq; alt ] ->
+        eval pred
+        |> Result.bind
+            (fun v ->
+                match v with
+                | LispBool false -> eval alt
+                | _ -> eval conseq)
+    | LispList (LispAtom func :: args) -> args |> mapM eval |> Result.bind (apply func)
 
 and mapM fn =
     function
     | [] -> Result.Ok []
-    | x :: xs -> match fn x with
-                 | Result.Error e -> Result.Error e
-                 | Result.Ok v -> mapM fn xs |> Result.map (fun vs -> v :: vs)
+    | x :: xs ->
+        match fn x with
+        | Result.Error e -> Result.Error e
+        | Result.Ok v -> mapM fn xs |> Result.map (fun vs -> v :: vs)
+
 and apply func args =
     Map.tryFind func primitives
     |> Option.toResultWith (NotFunction("Unrecognized primitive function args", func))
-    |> Result.bind  (fun f -> f args) 
+    |> Result.bind (fun f -> f args)

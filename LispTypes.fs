@@ -5,6 +5,7 @@ let unwordsList list =
     |> List.map (fun p -> p.ToString())
     |> String.concat " "
 
+[<CustomEquality; NoComparison>]
 type LispVal =
     | LispAtom of string
     | LispList of List<LispVal>
@@ -24,6 +25,23 @@ type LispVal =
         | LispDottedList (head, tail) ->
             head |> unwordsList |> (sprintf "(%s . %s)")
             <| (tail.ToString())
+
+      override x.Equals(yObj) =
+        let compareList (s1: List<LispVal>) (s2: List<LispVal>) =
+           s1.Length = s2.Length
+           && (List.zip s1 s2
+               |> List.forall (fun (x, y) -> x = y))
+
+        match yObj with
+        | :? LispVal as y ->
+            match (x, y) with
+            | (LispAtom s1, LispAtom s2) -> s1 = s2
+            | (LispString s1, LispString s2) -> s1 = s2
+            | (LispNumber v1, LispNumber v2) -> v1 = v2
+            | (LispBool b1, LispBool b2) -> b1 = b2
+            | (LispList s1, LispList s2) -> compareList s1 s2
+            | (LispDottedList (h1, t1), LispDottedList (h2, t2)) -> compareList h1 h2 && t1 = t2
+            | _ -> false
 
 type LispError =
     | NumArgs of int32 * List<LispVal>
