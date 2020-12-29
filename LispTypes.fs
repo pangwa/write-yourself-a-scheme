@@ -24,3 +24,34 @@ type LispVal =
         | LispDottedList (head, tail) ->
             head |> unwordsList |> (sprintf "(%s . %s)")
             <| (tail.ToString())
+
+type LispError =
+    | NumArgs of int32 * List<LispVal>
+    | TypeMismatch of string * LispVal
+    | ParseError of string
+    | BadSpecialForm of string * LispVal
+    | NotFunction of string * string
+    | UnboundVar of string * string
+    | UnspecifiedReturn of string
+    | DefaultError of string
+
+    override this.ToString() =
+        match this with
+        | NumArgs (expected, found) ->
+            sprintf
+                "Expected %d args; found values: %s"
+                expected
+                (found
+                 |> List.map (fun v -> v.ToString())
+                 |> String.concat " ")
+        | TypeMismatch (expected, found) -> sprintf "Invalid type expected %s, found %s" expected (found.ToString())
+        | ParseError err -> sprintf "Parse error at %s" (err.ToString())
+        | BadSpecialForm (message, form) -> sprintf "%s: %s" message (form.ToString())
+        | NotFunction (message, func) -> sprintf "%s: %s" message func
+        | UnboundVar (message, varname) -> sprintf "%s: %s" message varname
+        | UnspecifiedReturn message -> message
+        | DefaultError e -> sprintf "Error: %s" e
+
+type ThrowsError<'T> = Result<'T, LispError>
+
+let throwError e = Result.Error e

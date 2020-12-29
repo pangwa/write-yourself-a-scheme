@@ -54,9 +54,9 @@ parseExprRef
             (between (pchar '(') (pchar ')') (attempt parseList <|> parseDottedList)) ]
 
 let readExpr input =
-    match run parseExpr input with
-    | Failure (_, err, _) -> sprintf "No match: %s" (err.ToString()) |> LispString
-    | Success (v, _, _) -> v
+    match run (parseExpr .>> eof) input with
+    | Failure (err, _, _) -> sprintf "No match %s" err |> ParseError |> throwError
+    | Success (v, _, _) -> Result.Ok v
 
 let checkResult v r =
     match r with
