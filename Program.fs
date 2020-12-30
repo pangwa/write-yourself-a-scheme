@@ -1,17 +1,18 @@
 ﻿// Learn more about F# at http://fsharp.org
 
 open System
-open NUnit.Framework
-open FsUnit
-open LispTypes
 open Parser
 open Eval
+open Repl
 
 [<EntryPoint>]
 let main argv =
-    let result = argv |> Array.tryHead |> Option.defaultValue ""
-                 |> readExpr |> Result.bind eval
-    match result with
-    | Result.Ok v -> printfn "evaluated: %s" (v.ToString())
-    | Result.Error e -> printfn "error: %s" (e.ToString())
+    if argv.Length = 0 then
+        runRepl()
+    else
+        let result = argv |> Array.tryHead |> Option.defaultValue ""
+                     |> readExpr |> Result.bind eval
+        match result with
+        | Ok v -> printfn "%s" (v.ToString())
+        | Error e -> printfn "error: %s" (e.ToString())
     0 // return an integer exit code
