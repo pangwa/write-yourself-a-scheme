@@ -27,7 +27,7 @@ let evalString env expr =
 let evalAndPrint env expr =
     evalString env expr |> Console.WriteLine
 
-let runOne expr = evalAndPrint (nullEnv ()) expr
+let runOne expr = evalAndPrint (primitiveBindings()) expr
 
 let runRepl () =
-    until ((=) "quit") (fun () -> readPrompt "Lisp>>>") (evalAndPrint (nullEnv ()))
+    until ((=) "quit") (fun () -> readPrompt "Lisp>>>") (evalAndPrint (primitiveBindings ()))

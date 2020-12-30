@@ -133,6 +133,15 @@ let rec equalFn =
 and equal2 x y =
     equalFn [ x; y ] |> (=) (Result.Ok(LispBool true))
 
+let makeFunc varargs env (args: List<LispVal>) body =
+    LispFunc((List.map (fun p -> p.ToString()) args), varargs, body, env)
+    |> Result.Ok
+
+let makeNormalFunc (envType: Env) args body = makeFunc None envType args body
+
+let makeVarArgs =
+    makeFunc << Some << (fun v -> v.ToString())
+
 let primitives: Map<string, List<LispVal> -> ThrowsError<LispVal>> =
     Map
         .empty
@@ -208,10 +217,23 @@ let rec eval (env: Env) =
                 | _ -> eval env conseq)
     | LispList [ LispAtom "set!"; LispAtom var; form ] -> eval env form |> Result.bind (setVar env var)
     | LispList [ LispAtom "define"; LispAtom var; form ] -> eval env form |> Result.bind (defineVar env var)
-    | LispList (LispAtom func :: args) ->
-        args
-        |> mapM (eval env)
-        |> Result.bind (apply func)
+    | LispList (LispAtom "define" :: LispList (LispAtom var :: args) :: body) ->
+                makeNormalFunc env args body |> Result.bind (defineVar env var)
+    | LispList (LispAtom "define" :: LispDottedList (LispAtom var :: args, LispAtom vargs) :: body) ->
+                makeVarArgs vargs env args body |> Result.bind (defineVar env var)
+    | LispList (LispAtom "lambda" :: LispList p :: body) ->
+                makeNormalFunc env p body
+    | LispList (LispAtom "lambda" :: LispDottedList (LispAtom var :: args, LispAtom vargs) :: body) ->
+                makeVarArgs vargs env args body |> Result.bind (defineVar env var)
+    | LispList (LispAtom "lambda" :: (LispAtom vargs) :: body) ->
+                makeVarArgs vargs env [] body
+    | LispList (func :: args) ->
+            monad {
+                let! fn = eval env func
+                let! argVals = mapM (eval env) args
+                let! ret = apply fn argVals
+                return ret
+            }
     | badform ->
         BadSpecialForm("Unrecognized special form", badform)
         |> throwError
@@ -225,6 +247,38 @@ and mapM fn =
         | Result.Ok v -> mapM fn xs |> Result.map (fun vs -> v :: vs)
 
 and apply func args =
-    Map.tryFind func primitives
-    |> Option.toResultWith (NotFunction("Unrecognized primitive function args", func))
-    |> Result.bind (fun f -> f args)
+    match func with
+    | LispPrimitiveFunc fn -> fn args
+    | LispFunc (fparams, vargs, body, clojure) ->
+        if fparams.Length <> args.Length && vargs = None then
+            NumArgs(fparams.Length, args) |> throwError
+        else
+            let remainingArgs = List.drop fparams.Length args
+
+            let evalBody (env: Env) = evalAllReturnLast env body
+
+            let bindVarArgs arg env =
+                match arg with
+                | Some argName -> bindVars env (Map.empty.Add(argName, LispList remainingArgs))
+                | None -> env
+
+            let newEnv =
+                List.zip fparams (List.take fparams.Length args)
+                |> Map.ofList
+                |> bindVars (new Env(clojure))
+                |> bindVarArgs vargs
+
+            evalBody newEnv
+    | _ -> DefaultError "runtime error" |> throwError
+
+and evalAllReturnLast env =
+    function
+    | [ x ] -> eval env x
+    | x :: xs ->
+        match eval env x with
+        | Result.Error _ as v -> v
+        | Result.Ok (_) -> evalAllReturnLast env xs
+
+let primitiveBindings () =
+    Map.mapValues LispPrimitiveFunc primitives
+    |> bindVars (nullEnv ())
