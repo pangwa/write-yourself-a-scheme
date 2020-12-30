@@ -70,6 +70,10 @@ type LispError =
         | UnspecifiedReturn message -> message
         | DefaultError e -> sprintf "Error: %s" e
 
+type Env = System.Collections.Generic.Dictionary<string, ref<LispVal>>
+
+let nullEnv () = new Env()
+
 type ThrowsError<'T> = Result<'T, LispError>
 
 let throwError e = Result.Error e

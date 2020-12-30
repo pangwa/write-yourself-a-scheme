@@ -163,20 +163,55 @@ let primitives: Map<string, List<LispVal> -> ThrowsError<LispVal>> =
         .Add("eq?", eqv)
         .Add("equal?", equalFn)
 
-let rec eval =
+let isBound (env: Env) var = env.ContainsKey(var)
+
+let getVar (env: Env) var =
+    let mutable ret = ref (LispBool false)
+
+    if env.TryGetValue(var, &ret) then
+        Result.Ok !ret
+    else
+        UnboundVar("Getting an unbound variable", var)
+        |> throwError
+
+let setVar (env: Env) var value =
+    if isBound env var then
+        env.[var] := value
+        Result.Ok value
+    else
+        UnboundVar("Setting an unbound variable", var)
+        |> throwError
+
+let defineVar (env: Env) var value =
+    env.[var] <- ref value
+    Result.Ok value
+
+let bindVars (env: Env) (vars: Map<string, LispVal>) =
+    for kv in vars do
+        env.[kv.Key] <- ref kv.Value
+
+    env
+
+let rec eval (env: Env) =
     function
     | LispString _ as v -> Result.Ok v
     | LispNumber _ as v -> Result.Ok v
     | LispBool _ as v -> Result.Ok v
+    | LispAtom id -> getVar env id
     | LispList [ LispAtom "quote"; v ] -> Result.Ok v
     | LispList [ LispAtom "if"; pred; conseq; alt ] ->
-        eval pred
+        eval env pred
         |> Result.bind
             (fun v ->
                 match v with
-                | LispBool false -> eval alt
-                | _ -> eval conseq)
-    | LispList (LispAtom func :: args) -> args |> mapM eval |> Result.bind (apply func)
+                | LispBool false -> eval env alt
+                | _ -> eval env conseq)
+    | LispList [ LispAtom "set!"; LispAtom var; form ] -> eval env form |> Result.bind (setVar env var)
+    | LispList [ LispAtom "define"; LispAtom var; form ] -> eval env form |> Result.bind (defineVar env var)
+    | LispList (LispAtom func :: args) ->
+        args
+        |> mapM (eval env)
+        |> Result.bind (apply func)
     | badform ->
         BadSpecialForm("Unrecognized special form", badform)
         |> throwError
