@@ -10,6 +10,5 @@ let main argv =
     if argv.Length = 0 then
         runRepl()
     else
-        argv |> Array.tryHead |> Option.defaultValue ""
-        |> runOne
+        argv |> List.ofArray |>runOne 
     0 // return an integer exit code

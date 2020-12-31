@@ -4,6 +4,18 @@ open FSharpPlus
 open FSharpPlus.Data
 open FParsec
 open LispTypes
+open Parser
+
+let readOrThrow parser input =
+    match run parser input with
+    | Success (v, _, _) -> Result.Ok(v)
+    | Failure (err, _, _) ->
+        sprintf "No match %s" err
+        |> ParseError
+        |> throwError
+
+let readExpr = readOrThrow (spaces >>. parseExpr .>> spaces .>> eof)
+let readExprList = readOrThrow (sepEndBy parseExpr spaces)
 
 let rec unpackNum =
     function
@@ -201,6 +213,76 @@ let bindVars (env: Env) (vars: Map<string, LispVal>) =
 
     env
 
+let runIOSafe<'T> (action: unit -> 'T) =
+  try
+    action() |> Result.Ok
+  with
+    | e -> e.ToString() |> DefaultError |> throwError
+type FileHandle with
+    member this.Close () = match this with
+                           | ReadHandle reader -> runIOSafe (fun () -> reader.Dispose())
+                           | WriteHandle writer -> runIOSafe (fun () -> writer.Dispose())
+
+type FileMode =
+    | ModeRead
+    | ModeWrite
+
+let makePort mode args =
+    match args with
+    | [LispString filename] ->
+        match mode with
+        | ModeRead -> runIOSafe (fun () -> new System.IO.StreamReader(filename) |> ReadHandle |> LispPort)
+        | ModeWrite -> runIOSafe (fun () -> new System.IO.StreamWriter(filename) |> WriteHandle |> LispPort)
+    | v -> TypeMismatch ("makePort: filename", LispList v) |> throwError
+
+let makePortFromStdIn () =
+     runIOSafe (fun () -> new System.IO.StreamReader(System.Console.OpenStandardInput()) |> ReadHandle |> LispPort)
+
+let closePort  =
+  function
+  | [LispPort p] -> p.Close() |> Result.map (fun _ -> LispBool true)
+  | _ -> LispBool false |> Result.Ok
+
+let safeIO<'T> (fn: LispVal -> ThrowsError<'T>) =
+    function
+    | LispPort handle as v ->
+        match fn v with
+        | Result.Ok(v) ->
+                handle.Close() |> ignore
+                Result.Ok(v)
+        | Result.Error(e) ->
+                handle.Close() |> ignore
+                Result.Error(e)
+    | _ -> DefaultError "safeIO: unexpected param" |> Result.Error
+
+let rec readProc =
+  function
+  | [] -> makePortFromStdIn() |> Result.bind (safeIO (fun p -> readProc [p]))
+  | [LispPort (ReadHandle reader)] ->
+            runIOSafe (fun () -> reader.ReadLine()) |> Result.map LispString
+  | args  -> BadSpecialForm("readProc", LispList args) |> throwError
+
+let rec writeProc =
+  function
+  | [obj] -> makePortFromStdIn() |> Result.bind (safeIO (fun p -> writeProc [obj; p]))
+  | [obj; LispPort (WriteHandle writer)] ->
+            runIOSafe (fun () -> writer.Write(sprintf "%s" (obj.ToString()))) |> Result.map (fun _ -> LispBool true)
+  | args  -> BadSpecialForm("readProc", LispList args) |> throwError
+
+let readFile filename = runIOSafe (fun() -> System.IO.File.ReadAllText(filename))
+
+let readContents =
+    function
+    | [LispString filename] -> readFile filename |> Result.map LispString
+    | args  -> BadSpecialForm("readContents", LispList args) |> throwError
+
+let load filename = readFile filename |> Result.bind readExprList
+
+let readAll =
+    function
+    | [LispString filename] -> load filename |> Result.map LispList
+    | args  -> BadSpecialForm("readAll", LispList args) |> throwError
+
 let rec eval (env: Env) =
     function
     | LispString _ as v -> Result.Ok v
@@ -227,6 +309,8 @@ let rec eval (env: Env) =
                 makeVarArgs vargs env args body |> Result.bind (defineVar env var)
     | LispList (LispAtom "lambda" :: (LispAtom vargs) :: body) ->
                 makeVarArgs vargs env [] body
+    | LispList [LispAtom "load"; LispString filename] ->
+             load filename |> Result.bind (mapM (eval env)) |> Result.map List.last
     | LispList (func :: args) ->
             monad {
                 let! fn = eval env func
@@ -249,6 +333,7 @@ and mapM fn =
 and apply func args =
     match func with
     | LispPrimitiveFunc fn -> fn args
+    | LispIOFunc fn -> fn args
     | LispFunc (fparams, vargs, body, clojure) ->
         if fparams.Length <> args.Length && vargs = None then
             NumArgs(fparams.Length, args) |> throwError
@@ -279,6 +364,26 @@ and evalAllReturnLast env =
         | Result.Error _ as v -> v
         | Result.Ok (_) -> evalAllReturnLast env xs
 
+let applyProc =
+  function
+  | [func; LispList args] -> apply func args
+  | func :: args -> apply func args
+  | [] -> BadSpecialForm ("function", LispList []) |> throwError
+
+let ioPrimitives =
+    Map
+        .empty
+        .Add("apply", applyProc)
+        .Add("open-input-file", makePort ModeRead)
+        .Add("open-output-file", makePort ModeWrite)
+        .Add("close-input-port", closePort)
+        .Add("close-output-port", closePort)
+        .Add("read", readProc)
+        .Add("write", writeProc)
+        .Add("read-contents", readContents)
+        .Add("read-all", readAll)
+    
 let primitiveBindings () =
-    Map.mapValues LispPrimitiveFunc primitives
+    Map.mapValues LispIOFunc ioPrimitives
+    |> Map.union (Map.mapValues LispPrimitiveFunc primitives)
     |> bindVars (nullEnv ())

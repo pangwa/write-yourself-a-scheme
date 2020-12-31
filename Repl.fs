@@ -27,7 +27,13 @@ let evalString env expr =
 let evalAndPrint env expr =
     evalString env expr |> Console.WriteLine
 
-let runOne expr = evalAndPrint (primitiveBindings()) expr
+let runOne args = 
+  let env = List.tail args |> List.map LispString |> LispList
+            |> fun x -> Map.add "args" x (Map.empty) 
+            |> bindVars (primitiveBindings())
+  match eval env (LispList [LispAtom "load"; LispString (args.[0])]) with
+  | Ok v -> Console.WriteLine(v)
+  | Error e -> sprintf "Eval failed: %s" (e.ToString()) |> Console.WriteLine
 
 let runRepl () =
     until ((=) "quit") (fun () -> readPrompt "Lisp>>>") (evalAndPrint (primitiveBindings ()))
