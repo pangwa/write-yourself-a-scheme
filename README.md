@@ -53,11 +53,11 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[contributors-shield]: https://img.shields.io/github/contributors/pangwa/write-yourself-a-scheme.svg?style=for-the-badge
+[contributors-shield]: https://img.shields.io/github/contributors/pangwa/write-yourself-a-scheme.svg?style=plastic
 [contributors-url]: https://github.com/pangwa/write-yourself-a-scheme/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/pangwa/write-yourself-a-scheme.svg?style=for-the-badge
+[forks-shield]: https://img.shields.io/github/forks/pangwa/write-yourself-a-scheme.svg?style=plastic
 [forks-url]: https://github.com/pangwa/write-yourself-a-scheme/network/members
-[stars-shield]: https://img.shields.io/github/stars/pangwa/write-yourself-a-scheme.svg?style=for-the-badge
+[stars-shield]: https://img.shields.io/github/stars/pangwa/write-yourself-a-scheme.svg?style=plastic
 [stars-url]: https://github.com/pangwa/write-yourself-a-scheme/stargazers
-[license-shield]: https://img.shields.io/github/license/pangwa/write-yourself-a-scheme.svg?style=for-the-badge
+[license-shield]: https://img.shields.io/github/license/pangwa/write-yourself-a-scheme.svg?style=plastic
 [license-url]: https://github.com/pangwa/write-yourself-a-scheme/blob/master/LICENSE.txt
