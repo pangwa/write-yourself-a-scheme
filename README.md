@@ -22,6 +22,7 @@ After implementing the Scheme repl in F# following this book, I think it would b
 
 <!-- GETTING STARTED -->
 ## Getting Started
+This repo is the example code for the [Write Yourself a Scheme](https://write-yourself-a-scheme.pangwa.com/) tutorial. The main branch of this repo is a empty project to start with. The source code of each chapter can be found in the coresponding branch.
 
 ### Prerequisites
 
@@ -47,8 +48,10 @@ Contributions are what make the open source community such an amazing place to b
 ## License
 Distributed under the MIT License. See `LICENSE` for more information.
 
-<!-- ACKNOWLEDGEMENTS -->
-## Acknowledgements
+## Love this project?
+You can buy me a coffee if you enjoyed this tutorial!
+
+<a href="https://www.buymeacoffee.com/pangwa"><img src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&emoji=&slug=pangwa&button_colour=6F7FFF&font_colour=ffffff&font_family=Cookie&outline_colour=000000&coffee_colour=FFDD00"></a>
 
 
 <!-- MARKDOWN LINKS & IMAGES -->
